@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADR Admin Dashboard</title>
+    <!-- 1. Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 2. Load D3.js for Charting -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+        /* ... existing styles ... */
+        #reportList::-webkit-scrollbar {
+            width: 8px;
+        }
+        #reportList::-webkit-scrollbar-track {
+            background: #2d3748; /* gray-800 */
+        }
+        #reportList::-webkit-scrollbar-thumb {
+            background: #4a5568; /* gray-600 */
+            border-radius: 4px;
+        }
+        #reportList::-webkit-scrollbar-thumb:hover {
+            background: #718096; /* gray-500 */
+        }
+        /* Styles for the D3 chart */
+        .bar {
+            fill: #3b82f6; /* blue-500 */
+            transition: fill 0.3s ease;
+        }
+        .bar:hover {
+            fill: #60a5fa; /* blue-400 */
+        }
+        .axis-text {
+            font-family: monospace;
+            font-size: 12px;
+            fill: #9ca3af; /* gray-400 */
+        }
+        .axis-line {
+            stroke: #4b5563; /* gray-600 */
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 font-sans">
+
+    <!-- Header -->
+    <header class="bg-gray-800 shadow-md sticky top-0 z-10">
+        <!-- ... existing header ... -->
+        <nav class="container mx-auto px-6 py-4 flex justify-between items-center">
+            <h1 class="text-2xl font-bold text-blue-400">ADR Admin Dashboard</h1>
+            <div class="flex items-center space-x-4">
+                <span class="text-sm text-gray-400">User ID: <span id="userIdDisplay" class="font-mono">...</span></span>
+                <button id="refreshButton" class="bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-blue-500 transition-all flex items-center space-x-2">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9H0v5a8.001 8.001 0 0015.356 2m1.064-2.583A8.001 8.001 0 004.582 9H0v5a8.001 8.001 0 0015.356 2M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9H0v5a8.001 8.001 0 0015.356 2"></path></svg>
+                    <span>Refresh</span>
+                </button>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto p-6">
+        
+        <!-- Status Bar -->
+        <div id="status" class="bg-gray-800 border border-gray-700 rounded-lg p-4 text-center text-yellow-300 font-medium mb-6">
+            Initializing dashboard...
+        </div>
+
+        <!-- Triage Section -->
+        <section class="mb-8">
+            <!-- ... existing triage section ... -->
+            <h2 class="text-2xl font-semibold text-gray-300 mb-4">Triage Priority</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- Urgent -->
+                <div class="bg-red-800 bg-opacity-50 border border-red-700 p-4 rounded-lg shadow-lg">
+                    <h3 class="text-xl font-bold text-red-300">Urgent</h3>
+                    <p id="urgentCount" class="text-5xl font-mono font-bold text-white">0</p>
+                    <p class="text-red-200">Reports requiring immediate review</p>
+                </div>
+                <!-- Severe -->
+                <div class="bg-yellow-800 bg-opacity-50 border border-yellow-700 p-4 rounded-lg shadow-lg">
+                    <h3 class="text-xl font-bold text-yellow-300">Severe</h3>
+                    <p id="severeCount" class="text-5xl font-mono font-bold text-white">0</p>
+                    <p class="text-yellow-200">Reports marked as high priority</p>
+                </div>
+                <!-- Moderate/Mild -->
+                <div class="bg-green-800 bg-opacity-50 border border-green-700 p-4 rounded-lg shadow-lg">
+                    <h3 class="text-xl font-bold text-green-300">Moderate & Mild</h3>
+                    <p id="otherCount" class="text-5xl font-mono font-bold text-white">0</p>
+                    <p class="text-green-200">Non-critical reports</p>
+                </div>
+            </div>
+        </section>
+        
+        <!-- 
+          NEW: Analytics & Trends Section
+        -->
+        <section class="mb-8">
+            <h2 class="text-2xl font-semibold text-gray-300 mb-4">Analytics & Trends</h2>
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                <!-- Chart: Top 5 Drugs -->
+                <div class="lg:col-span-2 bg-gray-800 shadow-lg rounded-lg p-6">
+                    <h3 class="text-xl font-semibold text-blue-300 mb-4">Top 5 Most Reported Drugs</h3>
+                    <div id="reportsChartContainer">
+                        <svg id="reportsChart" class="w-full h-64"></svg>
+                    </div>
+                </div>
+
+                <!-- Lists: Top Drugs & Symptoms -->
+                <div class="bg-gray-800 shadow-lg rounded-lg p-6 space-y-4">
+                    <div>
+                        <h3 class="text-lg font-semibold text-blue-300 mb-2">Top Reported Drugs</h3>
+                        <ol id="topDrugsList" class="list-decimal list-inside text-gray-300 space-y-1 font-mono"></ol>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold text-blue-300 mb-2">Top Reported Symptoms</h3>
+                        <ol id="topSymptomsList" class="list-decimal list-inside text-gray-300 space-y-1 font-mono"></ol>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- All Reports Section -->
+        <section>
+            <!-- ... existing reports section ... -->
+            <h2 class="text-2xl font-semibold text-gray-300 mb-4">All Incoming Reports</h2>
+            <div class="bg-gray-800 shadow-lg rounded-lg overflow-hidden">
+                <div id="reportList" class="h-[60vh] overflow-y-auto divide-y divide-gray-700">
+                    <!-- Reports will be dynamically loaded here -->
+                    <p class="p-6 text-gray-400">No reports loaded. Click "Refresh" to fetch data.</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+        <!-- 
+      Firebase Logic 
+    -->
+    <script type="module">
+        // 1. Import Firebase modules
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        // 2. Import Firestore modules
+        import { getFirestore, collection, query, getDocs, orderBy, onSnapshot, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Get DOM Elements ---
+        const statusEl = document.getElementById('status');
+        // ... (other elements) ...
+        const userIdDisplay = document.getElementById('userIdDisplay');
+        const refreshButton = document.getElementById('refreshButton');
+        const urgentCountEl = document.getElementById('urgentCount');
+        const severeCountEl = document.getElementById('severeCount');
+        const otherCountEl = document.getElementById('otherCount');
+        const reportListEl = document.getElementById('reportList');
+        
+        // --- NEW Analytics Elements ---
+        const topDrugsList = document.getElementById('topDrugsList');
+        const topSymptomsList = document.getElementById('topSymptomsList');
+        const chartSvg = d3.select("#reportsChart");
+
+        // --- App State ---
+        let db, auth, userId, publicReportCollectionPath;
+        let isAuthReady = false;
+        let reportsUnsubscribe = null; 
+
+        // --- Firebase Initialization ---
+        function initializeFirebase() {
+            try {
+                const firebaseConfig = {
+                    apiKey: "AIzaSyB2bJXdxqQ_j2iPdYgaU1pKRM55qoEFao0",
+                    authDomain: "voicebasedadr.firebaseapp.com",
+                    projectId: "voicebasedadr",
+                    storageBucket: "voicebasedadr.firebasestorage.app",
+                    messagingSenderId: "1041971170343",
+                    appId: "1:1041971170343:web:5e6e5badce8113f202d202",
+                    measurementId: "G-0YZQV1JZ39"
+                };
+                
+                
+
+                const appId = firebaseConfig.projectId || 'default-app-id';
+ 
+                const initialAuthToken = null; 
+
+                if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "AIzaSyB2bJXdxqQ_j2iPdYgaU1pKRM55qoEFao0") {
+ 
+                    console.error("Firebase config is not set. Please paste your firebaseConfig object.");
+                    statusEl.textContent = "Error: Firebase configuration is missing.";
+                    refreshButton.disabled = true;
+                } else if (firebaseConfig.apiKey) {
+                   
+                    const app = initializeApp(firebaseConfig);
+                    db = getFirestore(app);
+                    auth = getAuth(app);
+                    setLogLevel('Debug');
+
+                    onAuthStateChanged(auth, async (user) => {
+                        if (user) {
+                            userId = user.uid;
+                            userIdDisplay.textContent = userId.substring(0, 8) + "...";
+                            publicReportCollectionPath = `/artifacts/${appId}/public/data/adr_reports`;
+                            isAuthReady = true;
+                            console.log("Admin signed in with UID:", userId);
+                            statusEl.textContent = "Dashboard connected. Click 'Refresh' to load reports.";
+                            refreshButton.disabled = false;
+                            
+                            fetchReports();
+
+                        } else {
+                            try {
+                                if (initialAuthToken) {
+                                    await signInWithCustomToken(auth, initialAuthToken);
+                                } else {
+                                    await signInAnonymously(auth);
+                                }
+                            } catch (authError) {
+                                console.error("Authentication error:", authError);
+                                statusEl.textContent = "Authentication failed. Please refresh.";
+                            }
+                        }
+                    });
+                } else {
+                     console.error("Firebase config is missing or invalid.");
+                    statusEl.textContent = "Error: Firebase configuration is missing.";
+                    refreshButton.disabled = true;
+                }
+            } catch (e) {
+                console.error("Error initializing Firebase:", e);
+                statusEl.textContent = "Error: Could not connect to the database.";
+                refreshButton.disabled = true;
+            }
+        }
+
+        // --- Data Fetching Function ---
+        function fetchReports() {
+            // ... (this function is mostly the same) ...
+            if (!isAuthReady || !db) {
+                statusEl.textContent = "Database not ready.";
+                return;
+            }
+            statusEl.textContent = "Fetching reports...";
+            if (reportsUnsubscribe) {
+                reportsUnsubscribe();
+            }
+            const q = query(collection(db, publicReportCollectionPath), orderBy("createdAt", "desc"));
+            
+            reportsUnsubscribe = onSnapshot(q, (querySnapshot) => {
+                let reports = [];
+                querySnapshot.forEach((doc) => {
+                    reports.push(doc.data());
+                });
+                
+                statusEl.textContent = `Displaying ${reports.length} reports. (Listening for real-time updates)`;
+                
+                renderReports(reports);
+                updateAnalytics(reports); // NEW
+
+            }, (error) => {
+                console.error("Error fetching reports: ", error);
+                statusEl.textContent = "Error loading reports. Check console.";
+                reportListEl.innerHTML = `<p class="p-6 text-red-400">Error loading reports.</p>`;
+            });
+        }
+
+        // --- UI Rendering Function ---
+        function renderReports(reports) {
+            // ... (this function is the same as before) ...
+            if (reports.length === 0) {
+                reportListEl.innerHTML = `<p class="p-6 text-gray-400">No reports found in the database.</p>`;
+                return;
+            }
+
+            let urgentCount = 0;
+            let severeCount = 0;
+            let otherCount = 0;
+            let reportsHTML = '';
+
+            reports.forEach(data => {
+                const severity = data.severity || 'Unclear';
+                let severityColor = 'text-gray-400';
+
+                if (severity.toLowerCase() === 'urgent') {
+                    severityColor = 'text-red-400';
+                    urgentCount++;
+                } else if (severity.toLowerCase() === 'severe') {
+                    severityColor = 'text-yellow-400';
+                    severeCount++;
+                } else {
+                    if (severity.toLowerCase() === 'moderate') {
+                        severityColor = 'text-blue-300';
+                    } else if (severity.toLowerCase() === 'mild') {
+                        severityColor = 'text-green-300';
+                    }
+                    otherCount++;
+                }
+                
+                reportsHTML += `
+                    <div class="p-4 ${severity.toLowerCase() === 'urgent' ? 'bg-red-900 bg-opacity-30' : ''}">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h3 class="text-xl font-semibold text-blue-300">${data.drugName || 'Unknown Drug'}</h3>
+                                <p class="text-sm text-gray-400">User: <span class="font-mono">${data.userId.substring(0, 8)}...</span> | Age: <span class="font-mono">${data.age || 'N/A'}</span></p>
+                            </div>
+                            <div class="text-right">
+                                <span class="font-bold text-lg ${severityColor}">${severity}</span>
+                                <p class="text-sm text-gray-500">${new Date(data.createdAt).toLocaleString()}</p>
+                            </div>
+                        </div>
+                        <div class="mt-2 pl-4 border-l-2 border-gray-700">
+                            <p class="text-gray-300"><strong>Symptom (Raw):</strong> ${data.symptom || 'N/A'}</p>
+                            <p class="text-yellow-300"><strong>AI Symptoms:</strong> ${data.extractedSymptoms || 'N/A'}</p>
+                            <!-- NEW: Added the English Translation field -->
+                            <p class="text-cyan-300"><strong>Symptom (English):</strong> ${data.symptom_english_translation || 'N/A'}</p>
+                            <p class="text-gray-400 mt-2"><strong>AI Advice:</strong> ${data.aiAdvice_nextSteps || ''} ${data.aiAdvice_precautions || ''}</p>
+                        </div>
+                    </div>
+                `;
+            });
+            reportListEl.innerHTML = reportsHTML;
+            urgentCountEl.textContent = urgentCount;
+            severeCountEl.textContent = severeCount;
+            otherCountEl.textContent = otherCount;
+        }
+
+        // --- 
+        // --- NEW: Analytics Functions 
+        // --- 
+        function updateAnalytics(reports) {
+            const drugCounts = {};
+            const symptomCounts = {};
+
+            reports.forEach(report => {
+                // Count Drugs
+                const drug = (report.drugName || 'Unknown').trim();
+                if (drug) {
+                    drugCounts[drug] = (drugCounts[drug] || 0) + 1;
+                }
+                
+                // Count Symptoms
+                const symptoms = (report.extractedSymptoms || '').split(',');
+                symptoms.forEach(symptom => {
+                    const s = symptom.trim();
+                    if (s && s !== "N/A" && s !== "AI analysis failed." && s !== "Analysis error") {
+                        symptomCounts[s] = (symptomCounts[s] || 0) + 1;
+                    }
+                });
+            });
+
+            // --- Render Top 5 Drugs List ---
+            const sortedDrugs = Object.entries(drugCounts).sort(([,a],[,b]) => b-a);
+            topDrugsList.innerHTML = ''; // Clear list
+            sortedDrugs.slice(0, 5).forEach(([name, count]) => {
+                const li = document.createElement('li');
+                li.textContent = `${name}: ${count}`;
+                topDrugsList.appendChild(li);
+            });
+
+            // --- Render Top 5 Symptoms List ---
+            const sortedSymptoms = Object.entries(symptomCounts).sort(([,a],[,b]) => b-a);
+            topSymptomsList.innerHTML = ''; // Clear list
+            sortedSymptoms.slice(0, 5).forEach(([name, count]) => {
+                const li = document.createElement('li');
+                li.textContent = `${name}: ${count}`;
+                topSymptomsList.appendChild(li);
+            });
+
+            // --- Draw the Bar Chart ---
+            const chartData = sortedDrugs.slice(0, 5).map(([name, count]) => ({ name, count }));
+            drawChart(chartData);
+        }
+
+        function drawChart(data) {
+            chartSvg.selectAll("*").remove(); // Clear previous chart
+
+            const margin = { top: 20, right: 20, bottom: 60, left: 40 };
+            const width = parseInt(chartSvg.style("width")) - margin.left - margin.right;
+            const height = parseInt(chartSvg.style("height")) - margin.top - margin.bottom;
+
+            if(width <= 0 || height <= 0) return; // Don't draw if container isn't visible
+
+            const g = chartSvg.append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            // X-axis (Band scale)
+            const x = d3.scaleBand()
+                .domain(data.map(d => d.name))
+                .range([0, width])
+                .padding(0.2);
+                
+            g.append("g")
+                .attr("transform", `translate(0,${height})`)
+                .call(d3.axisBottom(x))
+                .selectAll("text")
+                .attr("class", "axis-text")
+                .attr("transform", "translate(-10,0)rotate(-45)")
+                .style("text-anchor", "end");
+            
+            // Y-axis (Linear scale)
+            const y = d3.scaleLinear()
+                .domain([0, d3.max(data, d => d.count) || 10])
+                .range([height, 0]);
+                
+            g.append("g")
+                .call(d3.axisLeft(y).ticks(5).tickFormat(d3.format("d")))
+                .selectAll("text")
+                .attr("class", "axis-text");
+
+            // Apply line styles to axes
+            g.selectAll(".domain, .tick line").attr("class", "axis-line");
+
+            // Bars
+            g.selectAll(".bar")
+                .data(data)
+                .enter().append("rect")
+                .attr("class", "bar")
+                .attr("x", d => x(d.name))
+                .attr("y", d => y(d.count))
+                .attr("width", x.bandwidth())
+                .attr("height", d => height - y(d.count))
+                .append("title")
+                .text(d => `${d.name}: ${d.count} reports`);
+        }
+
+        // --- Event Listeners ---
+        refreshButton.addEventListener('click', fetchReports);
+
+        // --- Initialize ---
+        refreshButton.disabled = true;
+        initializeFirebase();
+
+    </script>
+</body>
+</html>
+
+

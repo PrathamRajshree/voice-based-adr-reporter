@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice ADR Reporter (v5.2 - AI Fix)</title>
+    <!-- 1. Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+        /* Add a subtle pulse for the listening status */
+        @keyframes pulse-yellow {
+            0%, 100% { color: #facc15; } /* yellow-400 */
+            50% { color: #fef08a; } /* yellow-200 */
+        }
+        .status-listening {
+            animation: pulse-yellow 1.5s infinite;
+        }
+        /* Hide file input */
+        #imageUploader {
+            display: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex items-center justify-center font-sans p-4">
+
+    <div class="bg-gray-800 shadow-2xl rounded-2xl p-6 sm:p-10 max-w-2xl w-full border-t-4 border-blue-500">
+        
+        <header class="text-center mb-6">
+            <h1 class="text-3xl sm:text-4xl font-bold text-blue-300">Voice ADR Reporter</h1>
+            <p class="text-lg text-gray-400 mt-2">Helping you report adverse drug reactions easily.</p>
+        </header>
+
+        <main>
+            <!-- 2. Main control button -->
+            <div class="text-center mb-6">
+                <button id="startButton" class="bg-blue-600 text-white font-bold py-4 px-8 rounded-full text-xl shadow-lg transform transition-all duration-300 hover:scale-105 hover:bg-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-400 focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                    Start Report
+                </button>
+            </div>
+
+            <!-- 3. Status display area -->
+            <div id="status" class="text-center text-lg text-yellow-300 h-10 mb-4 font-medium">
+                Please wait, initializing system...
+            </div>
+            
+            <!-- OCR Buttons Container -->
+            <div id="ocrContainer" class="hidden text-center mb-4 space-x-2">
+                <input type="file" id="imageUploader" accept="image/*">
+                <button id="scanButton" class="bg-teal-500 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-teal-400 transition-all">
+                    Scan Medicine (OCR)
+                </button>
+                <button id="cancelScanButton" class="bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-gray-500 transition-all">
+                    Cancel Scan
+                </button>
+            </div>
+
+            <!-- NEW: Manual Correction Container -->
+            <div id="correctionContainer" class="hidden text-center mb-4 p-4 bg-gray-700 rounded-lg">
+                <label for="correctionInput" class="block text-lg text-gray-300 mb-2">Is this medicine name correct?</label>
+                <input type="text" id="correctionInput" class="w-full p-2 rounded-lg bg-gray-800 text-white border border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <div class="mt-4 space-x-2">
+                    <button id="confirmButton" class="bg-green-600 text-white font-semibold py-2 px-6 rounded-lg shadow-md hover:bg-green-500 transition-all">
+                        Confirm
+                    </button>
+                    <button id="speakAgainButton" class="bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-gray-500 transition-all">
+                        Speak Again
+                    </button>
+                </div>
+            </div>
+
+            <!-- 4. Transcript and Report Area -->
+            <div class="bg-gray-900 p-4 sm:p-6 rounded-lg shadow-inner min-h-[200px]">
+                <h2 class="text-xl font-semibold mb-3 text-gray-300">Report Conversation:</h2>
+                <!-- Conversation log -->
+                <div id="conversationLog" class="space-y-3 text-base max-h-48 overflow-y-auto">
+                    <!-- Conversation log appears here -->
+                </div>
+                
+                <!-- Final generated report -->
+                <div id="finalReport" class="hidden mt-6">
+                    <h2 class="text-xl font-semibold mb-3 text-green-300">Completed Report (Saved to Database):</h2>
+                    <pre id="reportContent" class="bg-gray-800 p-4 rounded-lg text-gray-200 whitespace-pre-wrap font-mono"></pre>
+                </div>
+            </div>
+        </main>
+        
+        <footer class="text-center mt-6 flex justify-between items-center">
+            <!-- Language Selector -->
+            <div>
+                <label for="langSelect" class="text-gray-400 mr-2">Language:</label>
+                <select id="langSelect" class="bg-gray-700 text-white rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
+                    <option value="en-US">English (US)</option>
+                    <option value="en-GB">English (UK)</option>
+                    <option value="es-ES">Español (España)</option>
+                    <option value="fr-FR">Français (France)</option>
+                    <option value="de-DE">Deutsch (Deutschland)</option>
+                    <option value="it-IT">Italiano (Italia)</option>
+                    <option value="hi-IN">हिन्दी (भारत)</option>
+                    <option value="ja-JP">日本語 (日本)</option>
+                    <option value="ta-IN">தமிழ் (இந்தியா)</option>
+                    <option value="te-IN">తెలుగు (భారతదేశం)</option>
+                    <option value="kn-IN">ಕನ್ನಡ (ಭారਤ)</option>
+                    <option value="ml-IN">മലയാളം (ഇന്ത്യ)</option>
+                </select>
+            </div>
+
+            <!-- View Past Reports Button -->
+            <div>
+                <button id="viewReportsButton" class="bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg shadow-md hover:bg-gray-500 transition-all disabled:opacity-50">
+                    View Past Reports
+                </button>
+            </div>
+
+            <!-- User ID Display -->
+            <div class="text-right">
+                <span class="text-gray-500 text-xs">User ID:</span>
+                <span id="userIdDisplay" class="text-gray-400 text-xs font-mono">Not signed in</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Modal for Past Reports -->
+    <div id="reportsModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 hidden z-50">
+        <div class="bg-gray-800 rounded-2xl shadow-2xl max-w-3xl w-full h-[80vh] flex flex-col">
+            <header class="p-4 border-b border-gray-700 flex justify-between items-center">
+                <h2 class="text-2xl font-bold text-blue-300">Your Past Reports</h2>
+                <button id="closeModalButton" class="text-gray-400 hover:text-white text-3xl">&times;</button>
+            </header>
+            <div id="modalContent" class="p-6 overflow-y-auto">
+                <p class="text-gray-400">Loading reports...</p>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- 
+      Firebase and Gemini AI Logic 
+    -->
+    <script type="module">
+        // 5. Import Firebase modules
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, setLogLevel, query, getDocs, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Get DOM Elements ---
+        const startButton = document.getElementById('startButton');
+        const statusEl = document.getElementById('status');
+        const conversationLog = document.getElementById('conversationLog');
+        const finalReport = document.getElementById('finalReport');
+        const reportContent = document.getElementById('reportContent');
+        const langSelect = document.getElementById('langSelect');
+        const userIdDisplay = document.getElementById('userIdDisplay');
+        const ocrContainer = document.getElementById('ocrContainer');
+        const scanButton = document.getElementById('scanButton');
+        const cancelScanButton = document.getElementById('cancelScanButton');
+        const imageUploader = document.getElementById('imageUploader');
+        const reportsModal = document.getElementById('reportsModal');
+        const closeModalButton = document.getElementById('closeModalButton');
+        const modalContent = document.getElementById('modalContent');
+        const viewReportsButton = document.getElementById('viewReportsButton');
+        const correctionContainer = document.getElementById('correctionContainer');
+        const correctionInput = document.getElementById('correctionInput');
+        const confirmButton = document.getElementById('confirmButton');
+        const speakAgainButton = document.getElementById('speakAgainButton');
+
+
+        // --- Check for browser speech support ---
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const synthesis = window.speechSynthesis;
+        let recognition;
+
+        if (!SpeechRecognition || !synthesis) {
+            startButton.disabled = true;
+            statusEl.textContent = "Sorry, your browser does not support the Web Speech API.";
+            startButton.classList.add('opacity-50', 'cursor-not-allowed');
+        } else {
+            recognition = new SpeechRecognition();
+        }
+
+        // --- App State ---
+        let reportData = {};
+        let currentQuestionIndex = 0;
+        let isReporting = false;
+
+        // --- Firebase State ---
+        let db, auth, userId, publicReportCollectionPath;
+        let isAuthReady = false;
+        
+        // --- Q&A Flow ---
+        const questions = {
+            'en-US': {
+                startKeyword: 'start',
+                finishedKeyword: 'finished',
+                bank: [
+                    { key: 'welcome', text: 'Welcome. I will ask you a few questions to complete the report. Please say "Start" to begin.' },
+                    { key: 'drugName', text: 'First, what is the name of the medicine or drug? You can also say "Scan Medicine" or click the button.' },
+                    { key: 'symptom', text: 'What symptom or side effect did you experience? Please describe it.' },
+                    { key: 'age', text: 'What is your age?' },
+                    { key: 'moreInfo', text: 'Please provide any other details, or say "Finished".' },
+                    { key: 'complete', text: 'Thank you. Your report is being saved. I will now display it on the screen.' }
+                ]
+            },
+            'es-ES': {
+                startKeyword: 'comenzar',
+                finishedKeyword: 'terminado',
+                bank: [
+                    { key: 'welcome', text: 'Bienvenido. Le haré algunas preguntas para completar el informe. Diga "Comenzar" para empezar.' },
+                    { key: 'drugName', text: 'Primero, ¿cuál es el nombre del medicamento? También puede decir "Escanear Medicina" o hacer clic en el botón.' },
+                    { key: 'symptom', text: '¿Qué síntoma o efecto secundario experimentó? Por favor descríbalo.' },
+                    { key: 'age', text: '¿Cuál es su edad?' },
+                    { key: 'moreInfo', text: 'Por favor, proporcione cualquier otro detalle, o diga "Terminado".' },
+                    { key: 'complete', text: 'Gracias. Su informe está siendo guardado. Ahora lo mostraré en la pantalla.' }
+                ]
+            },
+            'hi-IN': {
+                startKeyword: 'स्टार्ट',
+                finishedKeyword: 'समाप्त',
+                bank: [
+                    { key: 'welcome', text: 'स्वागत है। मैं रिपोर्ट पूरी करने के लिए आपसे कुछ सवाल पूछूँगा। शुरू करने के लिए कृपया "स्टार्ट" कहें।' },
+                    { key: 'drugName', text: 'सबसे पहले, दवा का नाम क्या है? आप "स्कैन मेडिसिन" भी कह सकते हैं या बटन पर क्लिक कर सकते हैं।' },
+                    { key: 'symptom', text: 'आपने किस लक्षण या दुष्प्रभाव का अनुभव किया? कृपया इसका वर्णन करें।' },
+                    { key: 'age', text: 'आपकी उम्र क्या है?' },
+                    { key: 'moreInfo', text: 'कृपया कोई अन्य विवरण प्रदान करें, या "समाप्त" कहें।' },
+                    { key: 'complete', text: 'धन्यवाद। आपकी रिपोर्ट सहेजी जा रही है। मैं अब इसे स्क्रीन पर प्रदर्शित करूँगा।' }
+                ]
+            },
+            'ta-IN': { 
+                startKeyword: 'தொடங்கு',
+                finishedKeyword: 'முடிந்தது',
+                bank: [
+                    { key: 'welcome', text: 'வணக்கம். அறிக்கையை முடிக்க நான் உங்களிடம் சில கேள்விகளைக் கேட்பேன். தொடங்குவதற்கு "தொடங்கு" என்று கூறவும்.' },
+                    { key: 'drugName', text: 'முதலில், மருந்தின் பெயர் என்ன? நீங்கள் "மருந்தை ஸ்கேன் செய்" என்றும் கூறலாம் அல்லது பொத்தானைக் கிளிக் செய்யலாம்.' },
+                    { key: 'symptom', text: 'நீங்கள் என்ன அறிகுறி அல்லது பக்க விளைவை அனுபவித்தீர்கள்? தயவுசெய்து விவரிக்கவும்.' },
+                    { key: 'age', text: 'உங்கள் வயது என்ன?' },
+                    { key: 'moreInfo', text: 'வேறு ஏதேனும் விவரங்கள் இருந்தால் வழங்கவும், அல்லது "முடிந்தது" என்று கூறவும்.' },
+                    { key: 'complete', text: 'நன்றி. உங்கள் அறிக்கை சேமிக்கப்படுகிறது. நான் இப்போது அதை திரையில் காண்பிப்பேன்.' }
+                ]
+            },
+            'te-IN': {
+                startKeyword: 'ప్రారంభించు',
+                finishedKeyword: 'ముగించు',
+                bank: [
+                    { key: 'welcome', text: 'స్వాగతం. నివేదికను పూర్తి చేయడానికి నేను మిమ్మల్ని కొన్ని ప్రశ్నలు అడుగుతాను. దయచేసి ప్రారంభించడానికి "ప్రారంభించు" అని చెప్పండి.' },
+                    { key: 'drugName', text: 'మొదట, ఔషధం లేదా మందు పేరు ఏమిటి? మీరు "మందును స్కాన్ చేయి" అని కూడా చెప్పవచ్చు లేదా బటన్‌ను క్లిక్ చేయవచ్చు.' },
+                    { key: 'symptom', text: 'మీరు ఏ లక్షణం లేదా దుష్ప్రభావాన్ని అనుభవించారు? దయచేసి వివరించండి.' },
+                    { key: 'age', text: 'మీ వయస్సు ఎంత?' },
+                    { key: 'moreInfo', text: 'దయచేసి ఏవైనా ఇతర వివరాలను అందించండి, లేదా "ముగించు" అని చెప్పండి.' },
+                    { key: 'complete', text: 'ధన్యవాదాలు. మీ నివేదిక సేవ్ చేయబడుతోంది. నేను ఇప్పుడు దాన్ని తెరపై ప్రదర్శిస్తాను.' }
+                ]
+            },
+            'kn-IN': {
+                startKeyword: 'ಪ್ರಾರಂಭ',
+                finishedKeyword: 'ಮುಗಿದಿದೆ',
+                bank: [
+                    { key: 'welcome', text: 'ಸ್ವಾಗತ. ವರದಿಯನ್ನು ಪೂರ್ಣಗೊಳಿಸಲು ನಾನು ನಿಮಗೆ ಕೆಲವು ಪ್ರಶ್ನೆಗಳನ್ನು ಕೇಳುತ್ತೇನೆ. ದಯವಿಟ್ಟು ಪ್ರಾರಂಭಿಸಲು "ಪ್ರಾರಂಭ" ಎಂದು ಹೇಳಿ.' },
+                    { key: 'drugName', text: 'ಮೊದಲಿಗೆ, ಔಷಧಿ ಅಥವಾ ಔಷಧದ ಹೆಸರೇನು? ನೀವು "ಔಷಧವನ್ನು ಸ್ಕ್ಯಾನ್ ಮಾಡಿ" ಎಂದೂ ಹೇಳಬಹುದು ಅಥವಾ ಬಟನ್ ಕ್ಲಿಕ್ ಮಾಡಬಹುದು.' },
+                    { key: 'symptom', text: 'ನೀವು ಯಾವ ರೋಗಲಕ್ಷಣ ಅಥವಾ ಅಡ್ಡ ಪರಿಣಾಮವನ್ನು ಅನುಭವಿಸಿದ್ದೀರಿ? ದಯವಿಟ್ಟು ವಿವರಿಸಿ.' },
+                    { key: 'age', text: 'ನಿಮ್ಮ ವಯಸ್ಸು ಎಷ್ಟು?' },
+                    { key: 'moreInfo', text: 'ದಯವಿಟ್ಟು ಯಾವುದೇ ಇತರ ವಿವರಗಳನ್ನು ಒದಗಿಸಿ, அல்லது "ಮುಗಿದಿದೆ" ಎಂದು ಹೇಳಿ.' },
+                    { key: 'complete', text: 'ಧನ್ಯವಾದಗಳು. ನಿಮ್ಮ ವರದಿಯನ್ನು ಉಳಿಸಲಾಗುತ್ತಿದೆ. ನಾನೀಗ ಅದನ್ನು ಪರದೆಯ ಮೇಲೆ ಪ್ರದರ್ಶಿಸುತ್ತೇನೆ.' }
+                ]
+            },
+            'ml-IN': {
+                startKeyword: 'തുടങ്ങുക',
+                finishedKeyword: 'പൂർത്തിയായി',
+                bank: [
+                    { key: 'welcome', text: 'സ്വാഗതം. റിപ്പോർട്ട് പൂർത്തിയാക്കാൻ ഞാൻ നിങ്ങളോട് ഏതാനും ചോദ്യങ്ങൾ ചോിക്കാം. ആരംഭിക്കുന്നതിന് "തുടങ്ങുക" എന്ന് ദയവായി പറയുക.' },
+                    { key: 'drugName', text: 'ആദ്യം, മരുന്നിന്റെ പേരെന്താണ്? നിങ്ങൾക്ക് "മരുന്ന് സ്കാൻ ചെയ്യുക" എന്നും പറയാം അല്ലെങ്കിൽ ബട്ടണിൽ ക്ലിക്കുചെയ്യാം.' },
+                    { key:'symptom', text: 'നിങ്ങൾക്ക് എന്ത് രോഗലക്ഷണം അല്ലെങ്കിൽ പാർശ്വഫലമാണ് അനുഭവപ്പെട്ടത്? ദയവായി വിവരിക്കുക.' },
+                    { key: 'age', text: 'താങ്കളുടെ വയസ്സ് എത്രയാണ്?' },
+                    { key: 'moreInfo', text: 'ദയവായി മറ്റ് വിവരങ്ങൾ നൽകുക, അല്ലെങ്കിൽ "പൂർത്തിയായി" എന്ന് പറയുക.' },
+                    { key: 'complete', text: 'നന്ദി. നിങ്ങളുടെ റിപ്പോർട്ട് സേവ് ചെയ്യുന്നു. ഞാനിപ്പോൾ അത് സ്ക്രീനിൽ കാണിക്കാം.' }
+                ]
+            },
+            'ja-JP': {
+                startKeyword: '開始',
+                finishedKeyword: '終了',
+                bank: [
+                    { key: 'welcome', text: 'ようこそ。報告書を完成させるために、いくつかの質問をします。「開始」と言って始めてください。' },
+                    { key: 'drugName', text: 'まず、薬の名前は何ですか？「薬をスキャン」と言うか、ボタンをクリックすることもできます。' },
+                    { key: 'symptom', text: 'どのような症状や副作用がありましたか？説明してください。' },
+                    { key: 'age', text: 'あなたの年齢はおいくつですか？' },
+                    { key: 'moreInfo', text: 'その他の詳細があれば教えてください。なければ「終了」と言ってください。' },
+                    { key: 'complete', text: 'ありがとうございます。レポートを保存しています。画面に表示します。' }
+                ]
+            },
+            'fr-FR': {
+                startKeyword: 'commencer',
+                finishedKeyword: 'terminé',
+                bank: [
+                    { key: 'welcome', text: 'Bienvenue. Je vais vous poser quelques questions pour compléter le rapport. Veuillez dire "Commencer" pour débuter.' },
+                    { key: 'drugName', text: 'Tout d\'abord, quel est le nom du médicament ? Vous pouvez aussi dire "Scanner le médicament" ou cliquer sur le bouton.' },
+                    { key: 'symptom', text: 'Quel symptôme ou effet secondaire avez-vous ressenti ? Veuillez le décrire.' },
+                    { key: 'age', text: 'Quel est votre âge ?' },
+                    { key: 'moreInfo', text: 'Veuillez fournir tout autre détail, ou dire "Terminé".' },
+                    { key: 'complete', text: 'Merci. Votre rapport est en cours d\'enregistrement. Je vais maintenant l\'afficher à l\'écran.' }
+                ]
+            },
+            'de-DE': {
+                startKeyword: 'starten',
+                finishedKeyword: 'fertig',
+                bank: [
+                    { key: 'welcome', text: 'Willkommen. Ich werde Ihnen einige Fragen stellen, um den Bericht zu vervollständigen. Bitte sagen Sie "Starten", um zu beginnen.' },
+                    { key: 'drugName', text: 'Wie lautet der Name des Medikaments? Sie können auch "Medikament scannen" sagen oder auf die Schaltfläche klicken.' },
+                    { key: 'symptom', text: 'Welches Symptom oder welche Nebenwirkung ist bei Ihnen aufgetreten? Bitte beschreiben Sie es.' },
+                    { key: 'age', text: 'Wie alt sind Sie?' },
+                    { key: 'moreInfo', text: 'Bitte geben Sie weitere Details an oder sagen Sie "Fertig".' },
+                    { key: 'complete', text: 'Vielen Dank. Ihr Bericht wird gespeichert. Ich werde ihn jetzt auf dem Bildschirm anzeigen.' }
+                ]
+            },
+            'it-IT': {
+                startKeyword: 'inizia',
+                finishedKeyword: 'finito',
+                bank: [
+                    { key: 'welcome', text: 'Benvenuto. Le farò alcune domande per completare il rapporto. Dica "Inizia" per cominciare.' },
+                    { key: 'drugName', text: 'Innanzitutto, qual è il nome della medicina o del farmaco? Può anche dire "Scansiona medicina" o cliccare sul pulsante.' },
+                    { key: 'symptom', text: 'Quale sintomo o effetto collaterale ha manifestato? Per favore, lo descriva.' },
+                    { key: 'age', text: 'Quanti anni ha?' },
+                    { key: 'moreInfo', text: 'Per favore, fornisca qualsiasi altro dettaglio, o dica "Finito".' },
+                    { key: 'complete', text: 'Grazie. Il suo rapporto è in fase di salvataggio. Ora lo mostrerò sullo schermo.' }
+                ]
+            }
+        };
+
+        // --- Firebase Initialization ---
+        function initializeFirebase() {
+            try {
+                // 
+                // -------------------------------------------------------------------
+                // ⬇️⬇️ PASTE YOUR FIREBASE KEY (firebaseConfig) HERE ⬇️⬇️
+                // -------------------------------------------------------------------
+                
+                // --- PASTE YOUR FIREBASE CONFIG HERE ---
+                const firebaseConfig = {
+                    apiKey: "AIzaSyB2bJXdxqQ_j2iPdYgaU1pKRM55qoEFao0",
+                    authDomain: "voicebasedadr.firebaseapp.com",
+                    projectId: "voicebasedadr",
+                    storageBucket: "voicebasedadr.firebasestorage.app",
+                    messagingSenderId: "1041971170343",
+                    appId: "1:1041971170343:web:5e6e5badce8113f202d202",
+                    measurementId: "G-0YZQV1JZ39"
+                };
+
+                // --- END OF PASTE ---
+                
+                // This part replaces the placeholder code from the guide
+                const appId = firebaseConfig.projectId || 'default-app-id'; 
+                const initialAuthToken = null; // We are using Anonymous sign-in, not a token
+
+
+                if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_KEY_HERE") {
+                    const app = initializeApp(firebaseConfig);
+                    db = getFirestore(app);
+                    auth = getAuth(app);
+                    setLogLevel('Debug'); // Enable Firestore logging
+
+                    // Set up auth listener
+                    onAuthStateChanged(auth, async (user) => {
+                        if (user) {
+                            userId = user.uid;
+                            userIdDisplay.textContent = userId.substring(0, 8) + "..."; // Shorten for display
+                            publicReportCollectionPath = `/artifacts/${appId}/public/data/adr_reports`;
+                            isAuthReady = true;
+                            console.log("User signed in with UID:", userId);
+                            statusEl.textContent = "System ready. Click 'Start Report' to begin.";
+                            startButton.disabled = false;
+                            viewReportsButton.disabled = false;
+                        } else {
+                            // No user, sign in
+                            try {
+                                if (initialAuthToken) {
+                                    console.log("Signing in with custom token...");
+                                    await signInWithCustomToken(auth, initialAuthToken);
+                                } else {
+                                    console.log("Signing in anonymously...");
+                                    await signInAnonymously(auth);
+                                }
+                            } catch (authError) {
+                                console.error("Authentication error:", authError);
+                                statusEl.textContent = "Authentication failed. Please refresh.";
+                            }
+                        }
+                    });
+                } else {
+                    if (firebaseConfig.apiKey === "YOUR_KEY_HERE") {
+                        console.error("Firebase config is not set. Please paste your firebaseConfig object.");
+                        statusEl.textContent = "Error: Firebase configuration is missing.";
+                    } else {
+                        console.error("Firebase config is missing or invalid.");
+                        statusEl.textContent = "Error: Firebase configuration is missing.";
+                    }
+                    startButton.disabled = true;
+                    viewReportsButton.disabled = true;
+                }
+            } catch (e) {
+                console.error("Error initializing Firebase:", e);
+                statusEl.textContent = "Error: Could not connect to the database.";
+                startButton.disabled = true;
+                viewReportsButton.disabled = true;
+            }
+        }
+
+        // --- Core Speech Functions ---
+
+        function speak(text, onEndCallback) {
+            // ... (speech synthesis logic) ...
+            synthesis.cancel();
+            if (recognition) recognition.abort();
+
+            const utterance = new SpeechSynthesisUtterance(text);
+            const selectedLang = langSelect.value;
+            utterance.lang = selectedLang;
+            
+            const voices = synthesis.getVoices().filter(v => v.lang === selectedLang);
+            utterance.voice = voices[0] || synthesis.getVoices().find(v => v.lang.startsWith(selectedLang.split('-')[0])) || synthesis.getVoices()[0];
+
+            utterance.onstart = () => {
+                statusEl.textContent = "App is speaking...";
+                statusEl.classList.remove('status-listening');
+            };
+            
+            utterance.onend = () => {
+                if (onEndCallback) {
+                    onEndCallback();
+                }
+            };
+            
+            utterance.onerror = (e) => {
+                console.error("Speech synthesis error", e);
+                if (onEndCallback) {
+                    onEndCallback();
+                }
+            };
+            synthesis.speak(utterance);
+        }
+
+        function listen(onResultCallback) {
+            // ... (speech recognition logic) ...
+            if (!recognition) return;
+            recognition.stop();
+            const selectedLang = langSelect.value;
+            recognition.lang = selectedLang;
+            recognition.interimResults = false;
+            recognition.continuous = false;
+            let resultCaptured = false;
+
+            recognition.onstart = () => {
+                statusEl.textContent = "Listening...";
+                statusEl.classList.add('status-listening');
+            };
+
+            recognition.onresult = (event) => {
+                if (resultCaptured) return;
+                resultCaptured = true;
+                
+                const transcript = event.results[event.results.length - 1][0].transcript.trim();
+                logToConversation("You", transcript);
+                if (onResultCallback) {
+                    onResultCallback(transcript);
+                }
+            };
+            
+            recognition.onend = () => {
+                statusEl.classList.remove('status-listening');
+                statusEl.textContent = "Processing...";
+                if (!resultCaptured && isReporting) {
+                    statusEl.textContent = "I didn't hear that. Let's try again.";
+                    setTimeout(() => {
+                        askQuestion(currentQuestionIndex);
+                    }, 500); 
+                }
+            };
+            
+            recognition.onerror = (event) => {
+                console.error("Speech recognition error", event.error);
+                statusEl.classList.remove('status-listening');
+                if (event.error === 'no-speech' || event.error === 'audio-capture') {
+                    statusEl.textContent = "I didn't hear anything. Please try again.";
+                    setTimeout(() => {
+                        askQuestion(currentQuestionIndex);
+                    }, 500); 
+                } else if (event.error === 'not-allowed') {
+                    statusEl.textContent = "Microphone access denied.";
+                    resetApp();
+                } else {
+                    statusEl.textContent = "Speech error. Please try again.";
+                }
+            };
+            
+            try {
+                recognition.start();
+            } catch (e) {
+                console.error("Failed to start recognition", e);
+                if (isReporting) {
+                    setTimeout(() => listen(onResultCallback), 100); // Retry start
+                }
+            }
+        }
+
+        // --- Conversation & AI Logic ---
+
+        async function askQuestion(questionIndex) {
+            // ... (conversation flow logic) ...
+            const selectedLang = langSelect.value;
+            const qData = questions[selectedLang] || questions['en-US'];
+            const qBank = qData.bank;
+            
+            if (questionIndex >= qBank.length) {
+                console.error("Question index out of bounds");
+                return;
+            }
+
+            const question = qBank[questionIndex];
+            logToConversation("App", question.text);
+
+            if (question.key === 'drugName') {
+                ocrContainer.classList.remove('hidden');
+            } else {
+                ocrContainer.classList.add('hidden');
+            }
+            // --- NEW: Hide correction container ---
+            correctionContainer.classList.add('hidden');
+
+            if (question.key === 'complete') {
+                ocrContainer.classList.add('hidden');
+                await saveReportToFirebase(reportData);
+                speak(question.text, () => {
+                    displayReport();
+                    resetApp();
+                });
+            } else {
+                speak(question.text, () => {
+                    listen(handleAnswer);
+                });
+            }
+        }
+
+        async function handleAnswer(answer) {
+            // ... (answer handling logic) ...
+            const selectedLang = langSelect.value;
+            const qData = questions[selectedLang] || questions['en-US'];
+            const qBank = qData.bank;
+            const currentQuestion = qBank[currentQuestionIndex];
+            
+            if (currentQuestion.key === 'welcome') {
+                if (answer.toLowerCase().includes(qData.startKeyword.toLowerCase())) {
+                    currentQuestionIndex++;
+                    askQuestion(currentQuestionIndex);
+                } else {
+                    askQuestion(currentQuestionIndex); // Re-ask welcome
+                }
+                return;
+            }
+
+            const scanKeywords = ['scan medicine', 'escanear medicina', 'स्कैन मेडिसिन', 'மருந்தை ஸ்கேன் செய்', 'మందును స్కాన్ చేయి', 'ಔಷಧವನ್ನು ಸ್ಕ್ಯಾನ್ ಮಾಡಿ', 'മരുന്ന് സ്കാൻ ചെയ്യുക', '薬をスキャン', 'scanner le médicament', 'medikament scannen', 'scansiona medicina'];
+            if (currentQuestion.key === 'drugName' && scanKeywords.some(kw => answer.toLowerCase().includes(kw))) {
+                logToConversation("App", "OK. Please upload an image of the medicine box.");
+                statusEl.textContent = "Waiting for image upload...";
+                imageUploader.click(); // Open file dialog
+                return; 
+            }
+            
+            // --- NEW: Divert to confirmation step ---
+            if (currentQuestion.key === 'drugName') {
+                confirmDrugName(answer);
+                return; // Stop processing, wait for user confirmation
+            }
+            // --- END NEW ---
+
+            reportData[currentQuestion.key] = answer;
+            
+            if (currentQuestion.key === 'symptom') {
+                statusEl.textContent = "Analyzing symptoms with AI...";
+                logToConversation("App", "(Analyzing symptoms and preparing advice...)");
+                
+                let aiResponseText = "";
+                try {
+                    const aiJson = await getAiAdviceAndAnalysis(answer, selectedLang);
+
+                    reportData['extractedSymptoms'] = aiJson.extractedSymptoms;
+                    reportData['severity'] = aiJson.severity;
+                    reportData['aiAdvice_nextSteps'] = aiJson.nextSteps;
+                    reportData['aiAdvice_precautions'] = aiJson.precautions;
+
+                    logToConversation("App", `AI Analysis: [${aiJson.extractedSymptoms}]`);
+                    logToConversation("App", `AI Severity: [${aiJson.severity}]`);
+                    
+                    aiResponseText = `Here is my analysis. ${aiJson.nextSteps} ${aiJson.precautions} I will now ask the next question.`;
+                    logToConversation("App", `AI Advice: ${aiJson.nextSteps} ${aiJson.precautions}`);
+
+                } catch (e) {
+                    console.error("AI analysis failed:", e);
+                    reportData['extractedSymptoms'] = "AI analysis failed.";
+                    reportData['severity'] = "AI analysis failed.";
+                    aiResponseText = "Sorry, the AI analysis failed. I will continue with the next question.";
+                    logToConversation("App", "AI analysis failed.");
+                }
+                
+                // --- Get English translation for doctor's records ---
+                statusEl.textContent = "Translating symptom for records...";
+                logToConversation("App", "(Translating symptom for records...)");
+                try {
+                    // Only translate if the language is not already English
+                    if (!selectedLang.startsWith('en-')) {
+                        const translation = await getEnglishTranslation(answer);
+                        reportData['symptom_english_translation'] = translation;
+                        logToConversation("App", `English Translation: [${translation}]`);
+                    } else {
+                        reportData['symptom_english_translation'] = answer; // Already in English
+                        logToConversation("App", "English Translation: [Already in English]");
+                    }
+                } catch (e) {
+                    console.error("Translation failed:", e);
+                    reportData['symptom_english_translation'] = "Translation failed.";
+                    logToConversation("App", "Translation failed.");
+                }
+                // --- End of translation section ---
+                
+                speak(aiResponseText, () => {
+                    currentQuestionIndex++;
+                    if (currentQuestionIndex < qBank.length) {
+                        askQuestion(currentQuestionIndex);
+                    }
+                });
+                return;
+            }
+            
+            if (currentQuestion.key === 'moreInfo') {
+                const finishedCommand = qData.finishedKeyword;
+                if (answer.toLowerCase().includes(finishedCommand.toLowerCase())) {
+                    reportData['moreInfo'] = "User finished.";
+                }
+            }
+            
+            currentQuestionIndex++;
+            if (currentQuestionIndex < qBank.length) {
+                askQuestion(currentQuestionIndex);
+            }
+        }
+
+        // --- NEW: Drug Name Confirmation Function ---
+        function confirmDrugName(detectedName) {
+            synthesis.cancel();
+            if (recognition) recognition.stop();
+            
+            // Hide OCR buttons, show correction buttons
+            ocrContainer.classList.add('hidden');
+            correctionContainer.classList.remove('hidden');
+            
+            correctionInput.value = detectedName;
+            
+            const msg = `I detected the medicine as: ${detectedName}. Is this correct? Please confirm or correct it on the screen.`;
+            logToConversation("App", msg);
+            speak(msg, null); // Speak without moving on
+            statusEl.textContent = "Please confirm the medicine name.";
+        }
+
+        // --- AI API Call Functions ---
+
+        async function geminiApiCall(payload) {
+            // 
+            // -------------------------------------------------------------------
+            // ⬇️⬇️ PASTE YOUR GEMINI AI KEY (API Key) HERE ⬇️⬇️
+            // -------------------------------------------------------------------
+            const apiKey = "AIzaSyBfGOKjBnOOF0SrRbKkdsHKvuaV1QaoX1E"; 
+            // --- END OF PASTE ---
+
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            
+            if (apiKey === "YOUR_GEMINI_API_KEY_GOES_HERE") {
+                console.error("Gemini API key is not set. Please paste your API key.");
+                statusEl.textContent = "Error: AI API key is missing.";
+                logToConversation("App", "Error: AI analysis is not configured.");
+                throw new Error("AI API key is missing.");
+            }
+            
+            let delay = 1000;
+            for (let i = 0; i < 3; i++) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.status === 429 || response.status >= 500) {
+                        console.warn(`Gemini API busy (Status ${response.status}). Retrying in ${delay}ms...`);
+                        await new Promise(res => setTimeout(res, delay));
+                        delay *= 2;
+                        continue;
+                    }
+                    if (!response.ok) {
+                        throw new Error(`API call failed with status: ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    const aiText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                    
+                    if (aiText) {
+                        return aiText.trim();
+                    } else {
+                        throw new Error("Invalid response structure from AI.");
+                    }
+                } catch (error) {
+                    console.error("Error calling Gemini API:", error);
+                    if (i === 2) throw error;
+                }
+            }
+            throw new Error("AI analysis failed after retries.");
+        }
+
+        async function getAiAdviceAndAnalysis(symptomText, language) {
+            // ... (AI JSON schema and prompt logic) ...
+            const jsonSchema = {
+                type: "OBJECT",
+                properties: {
+                    "extractedSymptoms": { "type": "STRING", "description": "Comma-separated list of key symptoms." },
+                    "severity": { "type": "STRING", "description": "One word: 'Urgent', 'Severe', 'Moderate', 'Mild', or 'Unclear'." },
+                    "nextSteps": { "type": "STRING", "description": "A short, actionable instruction for the user. Example: 'Please contact your doctor immediately.' or 'Monitor your symptoms.'" },
+                    "precautions": { "type": "STRING", "description": "A brief precaution. Example: 'Do not take this medicine again until you speak to a doctor.' or 'Rest and drink fluids.'" }
+                },
+                required: ["extractedSymptoms", "severity", "nextSteps", "precautions"]
+            };
+
+            const systemPrompt = `You are a helpful medical triage assistant. The user will provide a symptom description. Analyze it and respond *only* with a valid JSON object matching this schema. Provide all advice in the user's language (${language}).
+
+IMPORTANT: Do not write any text before or after the JSON object. Your entire response must be the JSON object.
+
+Disclaimer: You are an AI, not a doctor. All advice must be safe and general. Prioritize user safety. If in doubt, advise the user to contact a medical professional.`;
+            
+            const userQuery = `User's symptom description: "${symptomText}"`;
+
+            const payload = {
+                contents: [{ parts: [{ text: userQuery }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                generationConfig: {
+                    // --- THIS IS THE FIX ---
+                    responseMimeType: "application/json",
+                    responseSchema: jsonSchema
+                }
+            };
+            
+            try {
+                const rawResponse = await geminiApiCall(payload);
+                const parsedJson = JSON.parse(rawResponse);
+                return parsedJson;
+            } catch (e) {
+                console.error("Failed to parse AI JSON response:", e);
+                return {
+                    extractedSymptoms: "Analysis error",
+                    severity: "Unclear",
+                    nextSteps: "Sorry, I had an error analyzing your symptom.",
+                    precautions: "Please continue with the report."
+                };
+            }
+        }
+        
+        async function getEnglishTranslation(text) {
+            const systemPrompt = "You are an expert translator. The user will provide text in any language. Translate this text to English. Respond with ONLY the English translation. Do not add any other text, context, or quotation marks.";
+            
+            const payload = {
+                contents: [{ parts: [{ text }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+            };
+            
+            try {
+                const translation = await geminiApiCall(payload);
+                return translation;
+            } catch (e) {
+                console.error("Translation failed:", e);
+                return "Translation failed.";
+            }
+        }
+        
+        async function readMedicineNameFromImage(base64ImageData, mimeType) {
+            // ... (AI OCR logic) ...
+            const systemPrompt = "You are an OCR assistant. Identify the primary brand name of the medicine in this image. Respond with ONLY the medicine name. If unclear, respond with 'Unknown'.";
+            
+            const payload = {
+                contents: [
+                    {
+                        role: "user",
+                        parts: [
+                            { text: "What is the name of the medicine in this image?" },
+                            {
+                                inlineData: {
+                                    mimeType: mimeType,
+                                    data: base64ImageData
+                                }
+                            }
+                        ]
+                    }
+                ],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+            };
+            return geminiApiCall(payload);
+        }
+
+        // --- Firestore Database Functions ---
+
+        async function saveReportToFirebase(data) {
+            // ... (save logic) ...
+            if (!isAuthReady || !db || !publicReportCollectionPath) {
+                console.error("Firestore is not ready.");
+                statusEl.textContent = "Error: Not connected to database.";
+                return;
+            }
+            statusEl.textContent = "Saving report to database...";
+            try {
+                const docRef = await addDoc(collection(db, publicReportCollectionPath), {
+                    ...data,
+                    reportLanguage: langSelect.value,
+                    createdAt: new Date().toISOString(),
+                    userId: userId
+                });
+                console.log("Document written with ID: ", docRef.id);
+                statusEl.textContent = "Report saved successfully!";
+            } catch (e) {
+                console.error("Error adding document to Firestore: ", e);
+                statusEl.textContent = "Error saving report.";
+                logToConversation("App", "Error: Could not save report to database.");
+            }
+        }
+        
+        
+        async function showPastReports() {
+            // ... (fetch reports logic) ...
+            if (!isAuthReady || !db || !publicReportCollectionPath) {
+                alert("Database not ready. Please wait.");
+                return;
+            }
+            
+            reportsModal.classList.remove('hidden');
+            modalContent.innerHTML = '<p class="text-gray-400">Loading reports...</p>';
+            
+            try {
+                // REVERTED: Simplified query
+                const q = query(
+                    collection(db, publicReportCollectionPath), 
+                    where("userId", "==", userId)
+                );
+                const querySnapshot = await getDocs(q);
+                
+                if (querySnapshot.empty) {
+                    modalContent.innerHTML = '<p class="text-gray-400">You have not filed any reports yet.</p>';
+                    return;
+                }
+                
+                let reportsHTML = '<div class="space-y-4">';
+                let reports = [];
+                querySnapshot.forEach((doc) => {
+                    reports.push(doc.data());
+                });
+
+                // REVERTED: Added back client-side sorting
+                reports.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                
+                reports.forEach((data) => {
+                    reportsHTML += `
+                        <div class="bg-gray-700 p-4 rounded-lg shadow-md">
+                            <div class="flex justify-between items-center mb-2">
+                                <h3 class="text-xl font-semibold text-blue-300">${data.drugName || 'Unknown Drug'}</h3>
+                                <span class="text-sm text-gray-400">${new Date(data.createdAt).toLocaleString()}</span>
+                            </div>
+                            <p class="text-gray-300 mb-1"><strong>Symptom:</strong> ${data.symptom || 'N/A'}</p>
+                            <p class="text-yellow-300 mb-1"><strong>AI Symptoms:</strong> ${data.extractedSymptoms || 'N/A'}</P>
+D                            <p class="text-red-400 font-bold"><strong>AI Severity:</strong> ${data.severity || 'N/A'}</p>
+                            <p class="text-gray-400 text-sm"><strong>Age:</strong> ${data.age || 'N/A'}</p>
+                            <p class="text-gray-400 text-sm"><strong>Details:</strong> ${data.moreInfo || 'N/A'}</p>
+                        </div>
+                    `;
+                });
+                
+                reportsHTML += '</div>';
+                modalContent.innerHTML = reportsHTML;
+                
+            } catch (error) {
+                console.error("Error fetching reports: ", error);
+                modalContent.innerHTML = '<p class="text-red-400">Error: Could not load reports.</p>';
+            }
+        }
+
+        // --- Utility Functions ---
+
+        function resetApp() {
+            // ... (reset logic) ...
+            isReporting = false;
+            startButton.textContent = "Start New Report";
+            startButton.disabled = !isAuthReady;
+            statusEl.textContent = isAuthReady ? "Click 'Start New Report' to begin." : "Initializing...";
+            currentQuestionIndex = 0;
+            reportData = {};
+            langSelect.disabled = false;
+            ocrContainer.classList.add('hidden');
+            correctionContainer.classList.add('hidden'); // NEW
+            viewReportsButton.disabled = !isAuthReady;
+            if (recognition) recognition.stop();
+        }
+        
+        function logToConversation(speaker, text) {
+            // ... (logging logic) ...
+            const div = document.createElement('div');
+            const strong = document.createElement('strong');
+            strong.textContent = `${speaker}: `;
+            
+            if (speaker === "App") {
+                div.className = "text-blue-300";
+                strong.className = "text-blue-200";
+            } else {
+                div.className = "text-gray-100";
+                strong.className = "text-gray-300";
+            }
+            
+            div.appendChild(strong);
+            div.appendChild(document.createTextNode(text));
+            conversationLog.appendChild(div);
+            conversationLog.scrollTop = conversationLog.scrollHeight;
+        }
+        
+        function displayReport() {
+            // ... (display logic) ...
+            let reportString = `ADVERSE DRUG REACTION REPORT\n`;
+            reportString += `Report Date: ${new Date().toLocaleString()}\n`;
+            reportString += `Language: ${langSelect.value}\n`;
+            reportString += `User ID: ${userId}\n`;
+            reportString += `----------------------------------\n\n`;
+            
+            reportString += `Drug Name:\n${reportData.drugName || 'Not provided'}\n\n`;
+            reportString += `Symptom(s) (Raw):\n${reportData.symptom || 'Not provided'}\n\n`;
+            
+            reportString += `AI Analyzed Symptoms:\n${reportData.extractedSymptoms || 'N/A'}\n\n`;
+            reportString += `AI Severity:\n${reportData.severity || 'N/A'}\n\n`;
+            reportString += `AI Given Advice (Next Steps):\n${reportData.aiAdvice_nextSteps || 'N/A'}\n\n`;
+            reportString += `AI Given Advice (Precautions):\n${reportData.aiAdvice_precautions || 'N/A'}\n\n`;
+            
+            reportString += `Symptom (English Translation):\n${reportData.symptom_english_translation || 'N/A'}\n\n`;
+
+            reportString += `Patient Age:\n${reportData.age || 'Not provided'}\n\n`;
+            reportString += `Other Details:\n${reportData.moreInfo || 'Not provided'}\n`;
+            
+            reportContent.textContent = reportString;
+            finalReport.classList.remove('hidden');
+        }
+
+        // --- Event Listeners ---
+        startButton.addEventListener('click', () => {
+            // ... (start button logic) ...
+            if (isReporting || !isAuthReady) return;
+            
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    stream.getTracks().forEach(track => track.stop());
+                    
+                    isReporting = true;
+                    startButton.disabled = true;
+                    startButton.textContent = "Reporting in Progress...";
+                    langSelect.disabled = true;
+                    viewReportsButton.disabled = true;
+                    
+                    conversationLog.innerHTML = '';
+                    finalReport.classList.add('hidden');
+                    reportContent.textContent = '';
+                    
+                    currentQuestionIndex = 0;
+                    reportData = {};
+                    
+                    askQuestion(currentQuestionIndex); // Start at index 0
+                })
+                .catch(err => {
+                    console.error("Microphone access error", err);
+                    statusEl.textContent = "Microphone access is required. Please allow microphone access.";
+                });
+        });
+        
+        // --- OCR Event Listeners ---
+        scanButton.addEventListener('click', () => {
+            imageUploader.click();
+        });
+        
+        cancelScanButton.addEventListener('click', () => {
+            ocrContainer.classList.add('hidden');
+            askQuestion(currentQuestionIndex); // Re-ask the question
+        });
+
+        imageUploader.addEventListener('change', (event) => {
+            // ... (image upload logic) ...
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const base64Image = e.target.result.split(',')[1];
+                const mimeType = file.type;
+                
+                statusEl.textContent = "Analyzing image with AI...";
+                logToConversation("App", "(Analyzing medicine image...)");
+                ocrContainer.classList.add('hidden');
+                synthesis.cancel();
+                if(recognition) recognition.stop();
+                
+                try {
+                    const drugName = await readMedicineNameFromImage(base64Image, mimeType);
+                    logToConversation("App", `AI found: [${drugName}]`);
+                    if (drugName.toLowerCase() === 'unknown') {
+                        logToConversation("App", "I couldn't read the name. Please say the name instead.");
+                        askQuestion(currentQuestionIndex);
+                    } else {
+                        // --- NEW: Go to confirmation step ---
+                        confirmDrugName(drugName);
+                    }
+                } catch (e) {
+                    logToConversation("App", "Sorry, AI image analysis failed. Please say the name.");
+                    askQuestion(currentQuestionIndex);
+                }
+            };
+            reader.readAsDataURL(file);
+            imageUploader.value = null; // Reset for next upload
+        });
+        
+        // --- NEW: Correction Button Event Listeners ---
+        confirmButton.addEventListener('click', () => {
+            const correctedName = correctionInput.value;
+            reportData['drugName'] = correctedName;
+            logToConversation("You", `(Manually confirmed: ${correctedName})`);
+            
+            correctionContainer.classList.add('hidden');
+            
+            currentQuestionIndex = 2; // Move to 'symptom' question
+            askQuestion(currentQuestionIndex);
+        });
+        
+        speakAgainButton.addEventListener('click', () => {
+            correctionContainer.classList.add('hidden');
+            logToConversation("App", "OK, let's try that again.");
+            askQuestion(currentQuestionIndex); // Re-asks 'drugName' question (index 1)
+        });
+        
+        // --- Modal Event Listeners ---
+        viewReportsButton.addEventListener('click', showPastReports);
+        closeModalButton.addEventListener('click', () => {
+            reportsModal.classList.add('hidden');
+        });
+
+        // Load voices and initialize Firebase
+        synthesis.getVoices();
+        if (synthesis.onvoiceschanged !== undefined) {
+            synthesis.onvoiceschanged = () => synthesis.getVoices();
+        }
+        
+        // --- Start Firebase on load ---
+        startButton.disabled = true; // Disable until Firebase is ready
+        viewReportsButton.disabled = true;
+        initializeFirebase();
+
+    </script>
+</body>
+</html>

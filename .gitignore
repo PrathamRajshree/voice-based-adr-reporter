@@ -1,0 +1,25 @@
+# Node & Firebase
+node_modules/
+.firebase/
+firebase-debug.log
+*.log
+
+# Environment files
+.env
+.env.local
+.env.*
+
+# VS Code
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build / cache
+dist/
+build/
+
+# Temporary files
+*.tmp
+*.swp
